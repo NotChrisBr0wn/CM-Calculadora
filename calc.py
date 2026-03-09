@@ -48,6 +48,14 @@ class CalculatorApp(ft.Container):
                 ),
                 ft.Row(
                     controls=[
+                        ExtraActionButton(content="CE", on_click=self.button_clicked),
+                        ExtraActionButton(content="⌫", on_click=self.button_clicked),
+                        ExtraActionButton(content="(", on_click=self.button_clicked),
+                        ExtraActionButton(content=")", on_click=self.button_clicked),
+                    ]
+                ),
+                ft.Row(
+                    controls=[
                         ExtraActionButton(content="AC", on_click=self.button_clicked),
                         ExtraActionButton(content="+/-", on_click=self.button_clicked),
                         ExtraActionButton(content="%", on_click=self.button_clicked),
@@ -98,6 +106,12 @@ class CalculatorApp(ft.Container):
         if data == "AC":
             self.expression.value = ""
             self.result.value = "0"
+        elif data == "CE":
+            self.result.value = "0"
+            self.expression.value = ""
+        elif data == "⌫":
+            self.result.value = self.apagar(self.result.value)
+            self.expression.value = self.result.value
         elif data == "=":
             evaluated = self.evaluate_expression(self.result.value)
             self.expression.value = self.result.value
@@ -110,6 +124,9 @@ class CalculatorApp(ft.Container):
             self.expression.value = self.result.value
         elif data in ("+", "-", "*", "/"):
             self.result.value = self.add_operator(self.result.value, data)
+            self.expression.value = self.result.value
+        elif data in ("(", ")"):
+            self.result.value = self.add_parenthesis(self.result.value, data)
             self.expression.value = self.result.value
         elif data in ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "."):
             self.result.value = self.add_digit(self.result.value, data)
@@ -145,6 +162,28 @@ class CalculatorApp(ft.Container):
             return expression[:-1] + operator
 
         return expression + operator
+
+    def add_parenthesis(self, expression, paren):
+        if expression in ("Error", "zoo", "nan"):
+            expression = "0"
+        # botao (
+        if paren == "(":
+            if expression == "0":
+                return "("
+            if expression.endswith(tuple("+-*/(")):
+                return expression + "("
+            return expression + "*("
+        else:  # ")"
+            if expression == "0":
+                return "0"
+            return expression + ")"
+
+    def apagar(self, expression):
+        if expression in ("Error", "zoo", "nan", "0", ""):
+            return "0"
+        
+        result = expression[:-1]
+        return result if result else "0"
 
     def get_current_number(self, expression):
         for index in range(len(expression) - 1, -1, -1):
@@ -197,7 +236,6 @@ class CalculatorApp(ft.Container):
         if "." in text:
             return text.rstrip("0").rstrip(".")
         return text
-
 
 def main(page: ft.Page):
     page.title = "Calc App"
