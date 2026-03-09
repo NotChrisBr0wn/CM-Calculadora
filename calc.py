@@ -65,12 +65,36 @@ class CalculatorApp(ft.Container):
         # Historico
         self.history = []
         self.last_expression = ""  # Rastreia a ultima expressao
+        self.show_history = False  
+        
+        # UI
+        self.history_list = ft.ListView(
+            expand=True,
+            spacing=0,
+            auto_scroll=True,
+        )
+        
+        self.history_button = ft.ElevatedButton(
+            "Historico",
+            color=ft.Colors.WHITE,
+            bgcolor=ft.Colors.RED_800,
+            tooltip="Mostrar/Ocultar Histórico",
+            on_click=self.toggle_history,
+        )
+        
+        self.history_panel = ft.Container(
+            content=self.history_list,
+            visible=False,
+            bgcolor=ft.Colors.GREY_900,
+            border=ft.border.all(1, ft.Colors.RED_600),
+            height=200,
+        )
 
         self.content = ft.Column(
             controls=[
                 ft.Row(
-                    controls=[self.expression],
-                    alignment=ft.MainAxisAlignment.END,
+                    controls=[self.expression, self.history_button],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
                 ft.Row(
                     controls=[self.result],
@@ -148,6 +172,7 @@ class CalculatorApp(ft.Container):
                         ScientificButton(content="rand", on_click=self.button_clicked),
                     ]
                 ),
+                self.history_panel,
             ]
         )
 
@@ -418,6 +443,40 @@ class CalculatorApp(ft.Container):
             self.history.pop(0)
         
         print(f"History added: {history_item}")
+        self.refresh_history_display()
+    
+    def toggle_history(self, e):
+        # Alterna a visibilidade do painel de historico
+        self.show_history = not self.show_history
+        self.history_panel.visible = self.show_history
+        self.update()
+    
+    def refresh_history_display(self):
+        # Atualiza a ListView do historico com as entradas atuais
+        self.history_list.controls.clear()
+        
+        # Mostra o mais recente no topo
+        for item in reversed(self.history):
+            row = ft.Row(
+                controls=[
+                    ft.Text(
+                        f"{item.index}. {item.timestamp}",
+                        size=12,
+                        color=ft.Colors.WHITE_70,
+                        width=100,
+                    ),
+                    ft.Text(
+                        f"{item.expression} = {item.result}",
+                        size=12,
+                        color=ft.Colors.WHITE,
+                        expand=True,
+                    ),
+                ],
+                spacing=5,
+            )
+            self.history_list.controls.append(row)
+        
+        self.update()
 
 
 def main(page: ft.Page):
