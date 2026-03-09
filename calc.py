@@ -1,6 +1,7 @@
 from dataclasses import field
-
+import re
 import flet as ft
+from sympy import N, SympifyError, sympify
 
 @ft.control
 class CalcButton(ft.Button):
@@ -28,7 +29,6 @@ class ExtraActionButton(CalcButton):
 @ft.control
 class CalculatorApp(ft.Container):
     def init(self):
-        self.reset()
         self.width = 350
         self.bgcolor = ft.Colors.BLACK
         self.border_radius = ft.BorderRadius.all(20)
@@ -88,75 +88,103 @@ class CalculatorApp(ft.Container):
     def button_clicked(self, e):
         data = e.control.content
         print(f"Button clicked with data = {data}")
-        if self.result.value == "Error" or data == "AC":
+
+        # Validacao e processamento das entradas
+        if data == "AC":
             self.result.value = "0"
-            self.reset()
-
-        elif data in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "."):
-            if self.result.value == "0" or self.new_operand:
-                self.result.value = data
-                self.new_operand = False
-            else:
-                self.result.value = self.result.value + data
-
+        elif data == "=":
+            self.result.value = self.evaluate_expression(self.result.value)
+        elif data == "+/-":
+            self.result.value = self.last_number(self.result.value)
+        elif data == "%":
+            self.result.value = self.percent(self.result.value)
         elif data in ("+", "-", "*", "/"):
-            self.result.value = self.calculate(
-                self.operand1, float(self.result.value), self.operator
-            )
-            self.operator = data
-            if self.result.value == "Error":
-                self.operand1 = "0"
-            else:
-                self.operand1 = float(self.result.value)
-            self.new_operand = True
-
-        elif data in ("="):
-            self.result.value = self.calculate(
-                self.operand1, float(self.result.value), self.operator
-            )
-            self.reset()
-
-        elif data in ("%"):
-            self.result.value = float(self.result.value) / 100
-            self.reset()
-
-        elif data in ("+/-"):
-            if float(self.result.value) > 0:
-                self.result.value = "-" + str(self.result.value)
-
-            elif float(self.result.value) < 0:
-                self.result.value = str(
-                    self.format_number(abs(float(self.result.value)))
-                )
+            self.result.value = self.add_operator(self.result.value, data)
+        elif data in ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "."):
+            self.result.value = self.add_digit(self.result.value, data)
 
         self.update()
 
-    def format_number(self, num):
-        if num % 1 == 0:
-            return int(num)
-        else:
-            return num
+    def add_digit(self, expression, digit):
+        if expression in ("Error", "zoo", "nan"):
+            expression = "0"
 
-    def calculate(self, operand1, operand2, operator):
-        if operator == "+":
-            return self.format_number(operand1 + operand2)
+        if digit == ".":
+            current = self.get_current_number(expression)
+            if "." in current:
+                return expression
+            if not current:
+                return expression + "0."
+            return expression + "."
 
-        elif operator == "-":
-            return self.format_number(operand1 - operand2)
+        if expression == "0":
+            return digit
 
-        elif operator == "*":
-            return self.format_number(operand1 * operand2)
+        if expression.endswith(tuple("+-*/")) and digit == "0":
+            return expression + "0"
 
-        elif operator == "/":
-            if operand2 == 0:
+        return expression + digit
+
+    def add_operator(self, expression, operator):
+        if expression in ("Error", "zoo", "nan"):
+            expression = "0"
+
+        if expression.endswith(tuple("+-*/")):
+            return expression[:-1] + operator
+
+        return expression + operator
+
+    def get_current_number(self, expression):
+        for index in range(len(expression) - 1, -1, -1):
+            if expression[index] in "+-*/":
+                return expression[index + 1 :]
+        return expression
+
+    def last_number(self, expression):
+        if expression in ("0", "Error", "zoo", "nan"):
+            return "0"
+
+        match = re.search(r"(\d*\.?\d+)$", expression)
+        if not match:
+            return expression
+
+        start, end = match.span()
+        number = expression[start:end]
+
+        if start > 0 and expression[start - 1] == "-":
+            if start == 1 or expression[start - 2] in "+-*/":
+                return expression[: start - 1] + number
+
+        return expression[:start] + "-" + number
+
+    def percent(self, expression):
+        if expression in ("Error", "zoo", "nan"):
+            return "0"
+
+        match = re.search(r"(\d*\.?\d+)$", expression)
+        if not match:
+            return expression
+
+        start, end = match.span()
+        number = expression[start:end]
+        return expression[:start] + f"({number}/100)"
+
+    def evaluate_expression(self, expression):
+        try:
+            value = N(sympify(expression), 12)
+            if value in ("zoo", "nan"):
                 return "Error"
-            else:
-                return self.format_number(operand1 / operand2)
+            return self.format_number(value)
+        except (SympifyError, ZeroDivisionError, TypeError, ValueError):
+            return "Error"
 
-    def reset(self):
-        self.operator = "+"
-        self.operand1 = 0
-        self.new_operand = True
+    def format_number(self, value):
+        text = str(value)
+        if text.endswith(".0"):
+            return text[:-2]
+        if "." in text:
+            return text.rstrip("0").rstrip(".")
+        return text
 
 
 def main(page: ft.Page):
