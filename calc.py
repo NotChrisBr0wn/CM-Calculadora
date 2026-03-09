@@ -1,5 +1,8 @@
 from dataclasses import field
+import json
+import os
 import re
+import duckdb as db
 import flet as ft
 from sympy import N, SympifyError, sympify
 from datetime import datetime
@@ -8,10 +11,15 @@ from datetime import datetime
 class HistoryItem:
     _counter = 0
     
-    def __init__(self, expression, result):
-        HistoryItem._counter += 1
-        self.index = HistoryItem._counter
-        self.timestamp = datetime.now().strftime("%H:%M")
+    def __init__(self, expression, result, index=None, timestamp=None):
+        if index is None:
+            HistoryItem._counter += 1
+            self.index = HistoryItem._counter
+        else:
+            self.index = int(index)
+            HistoryItem._counter = max(HistoryItem._counter, self.index)
+
+        self.timestamp = timestamp or datetime.now().strftime("%H:%M")
         self.expression = expression
         self.result = result
     
@@ -22,6 +30,23 @@ class HistoryItem:
     
     def __repr__(self):
         return f"{self.index}. {self.timestamp} | {self.expression} = {self.result}"
+
+    def to_dict(self):
+        return {
+            "index": self.index,
+            "timestamp": self.timestamp,
+            "expression": self.expression,
+            "result": self.result,
+        }
+
+    @staticmethod
+    def from_dict(data):
+        return HistoryItem(
+            expression=str(data.get("expression", "")),
+            result=str(data.get("result", "")),
+            index=int(data.get("index", 0)),
+            timestamp=str(data.get("timestamp", "")) or None,
+        )
 
 @ft.control
 class CalcButton(ft.Button):
@@ -54,6 +79,10 @@ class ScientificButton(CalcButton):
 
 @ft.control
 class CalculatorApp(ft.Container):
+    HISTORY_CLIENT_KEY = "calculator_history"
+    HISTORY_DB_FILE = "calculator_history.duckdb"
+    HISTORY_PARQUET_FILE = "calculator_history.parquet"
+
     def init(self):
         self.width = 350
         self.bgcolor = ft.Colors.BLACK
@@ -175,6 +204,10 @@ class CalculatorApp(ft.Container):
                 self.history_panel,
             ]
         )
+
+    def did_mount(self):
+        # Carrega historico automaticamente quando a app inicia
+        self.load_history_on_startup()
 
     def button_clicked(self, e):
         data = e.control.content
@@ -443,6 +476,7 @@ class CalculatorApp(ft.Container):
             self.history.pop(0)
         
         print(f"History added: {history_item}")
+        self.persist_history()
         self.refresh_history_display()
     
     def toggle_history(self, e):
@@ -497,6 +531,7 @@ class CalculatorApp(ft.Container):
     def delete_history_item(self, item_index):
         # Remove item do historico pelo indice auto-incrementado
         self.history = [item for item in self.history if item.index != item_index]
+        self.persist_history()
         self.refresh_history_display()
 
     def copy_history_result(self, item_index):
@@ -507,6 +542,110 @@ class CalculatorApp(ft.Container):
 
         if hasattr(self, "page") and self.page is not None:
             self.page.set_clipboard(str(selected.result))
+
+    def load_history_on_startup(self):
+        loaded = self.load_history_from_duckdb_parquet()
+        if not loaded:
+            loaded = self.load_history_from_client_storage()
+
+        if loaded:
+            self.history = loaded
+            self.refresh_history_display()
+            # Mantem ambas as fontes sincronizadas
+            self.persist_history()
+
+    def persist_history(self):
+        self.save_history_to_client_storage()
+        self.save_history_to_duckdb_parquet()
+
+    def save_history_to_client_storage(self):
+        if not hasattr(self, "page") or self.page is None:
+            return
+
+        try:
+            payload = [item.to_dict() for item in self.history]
+            self.page.client_storage.set(self.HISTORY_CLIENT_KEY, json.dumps(payload))
+        except Exception as err:
+            print(f"Client storage save error: {err}")
+
+    def save_history_to_duckdb_parquet(self):
+        try:
+            con = db.connect(self.HISTORY_DB_FILE)
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS calc_history (
+                    idx INTEGER,
+                    ts VARCHAR,
+                    expression VARCHAR,
+                    result VARCHAR
+                )
+                """
+            )
+            con.execute("DELETE FROM calc_history")
+
+            rows = [
+                (item.index, item.timestamp, item.expression, str(item.result))
+                for item in self.history
+            ]
+            if rows:
+                con.executemany(
+                    "INSERT INTO calc_history (idx, ts, expression, result) VALUES (?, ?, ?, ?)",
+                    rows,
+                )
+
+            con.execute(
+                f"COPY calc_history TO '{self.HISTORY_PARQUET_FILE}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE TRUE)"
+            )
+            con.close()
+        except Exception as err:
+            print(f"DuckDB/Parquet save error: {err}")
+
+    def load_history_from_client_storage(self):
+        if not hasattr(self, "page") or self.page is None:
+            return []
+
+        try:
+            raw = self.page.client_storage.get(self.HISTORY_CLIENT_KEY)
+            if not raw:
+                return []
+
+            data = json.loads(raw)
+            items = [HistoryItem.from_dict(item) for item in data]
+            return self.normalize_history(items)
+        except Exception as err:
+            print(f"Client storage load error: {err}")
+            return []
+
+    def load_history_from_duckdb_parquet(self):
+        try:
+            if not os.path.exists(self.HISTORY_PARQUET_FILE):
+                return []
+
+            con = db.connect(self.HISTORY_DB_FILE)
+            rows = con.execute(
+                f"SELECT idx, ts, expression, result FROM read_parquet('{self.HISTORY_PARQUET_FILE}') ORDER BY idx"
+            ).fetchall()
+            con.close()
+
+            items = [
+                HistoryItem(expression=row[2], result=row[3], index=row[0], timestamp=row[1])
+                for row in rows
+            ]
+            return self.normalize_history(items)
+        except Exception as err:
+            print(f"DuckDB/Parquet load error: {err}")
+            return []
+
+    def normalize_history(self, items):
+        # Garante no maximo 10 itens e contador consistente
+        sorted_items = sorted(items, key=lambda item: item.index)
+        trimmed = sorted_items[-10:]
+
+        HistoryItem.reset_counter()
+        for item in trimmed:
+            HistoryItem._counter = max(HistoryItem._counter, item.index)
+
+        return trimmed
 
 
 def main(page: ft.Page):
