@@ -2,6 +2,26 @@ from dataclasses import field
 import re
 import flet as ft
 from sympy import N, SympifyError, sympify
+from datetime import datetime
+
+
+class HistoryItem:
+    _counter = 0
+    
+    def __init__(self, expression, result):
+        HistoryItem._counter += 1
+        self.index = HistoryItem._counter
+        self.timestamp = datetime.now().strftime("%H:%M:%S")
+        self.expression = expression
+        self.result = result
+    
+    @staticmethod
+    def reset_counter():
+        # Reseta o contador
+        HistoryItem._counter = 0
+    
+    def __repr__(self):
+        return f"{self.index}. {self.timestamp} | {self.expression} = {self.result}"
 
 @ft.control
 class CalcButton(ft.Button):
@@ -41,6 +61,10 @@ class CalculatorApp(ft.Container):
         self.padding = 20
         self.expression = ft.Text(value="", color=ft.Colors.WHITE_54, size=16)
         self.result = ft.Text(value="0", color=ft.Colors.WHITE, size=20)
+        
+        # Historico
+        self.history = []
+        self.last_expression = ""  # Rastreia a ultima expressao
 
         self.content = ft.Column(
             controls=[
@@ -135,6 +159,7 @@ class CalculatorApp(ft.Container):
         if data == "AC":
             self.expression.value = ""
             self.result.value = "0"
+            self.last_expression = ""  # Reseta quando limpar tudo
         elif data == "CE":
             self.result.value = "0"
             self.expression.value = ""
@@ -143,8 +168,14 @@ class CalculatorApp(ft.Container):
             self.expression.value = self.result.value
         elif data == "=":
             evaluated = self.evaluate_expression(self.result.value)
+            expression_to_save = self.result.value
             self.expression.value = self.result.value
             self.result.value = evaluated
+            
+            # So adiciona ao historico se for uma nova expressao e o resultado nao for erro
+            if expression_to_save != self.last_expression and evaluated != "Error":
+                self.add_to_history(expression_to_save, evaluated)
+                self.last_expression = expression_to_save
         elif data == "+/-":
             self.result.value = self.last_number(self.result.value)
             self.expression.value = self.result.value
@@ -376,6 +407,19 @@ class CalculatorApp(ft.Container):
             result = "-" + result
         
         return result
+
+    def add_to_history(self, expression, result):
+        # Adiciona nova entrada ao historico e remove a mais antiga se exceder 10 itens
+        history_item = HistoryItem(expression, result)
+        self.history.append(history_item)
+        
+        # Apaga automaticamente a expressao mais antiga se o historico exceder 10 itens
+        if len(self.history) > 10:
+            self.history.pop(0)
+        
+        print(f"History added: {history_item}")
+
+
 def main(page: ft.Page):
     page.title = "Calc App"
     calc = CalculatorApp()
