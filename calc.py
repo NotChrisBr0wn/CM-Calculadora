@@ -11,7 +11,7 @@ class HistoryItem:
     def __init__(self, expression, result):
         HistoryItem._counter += 1
         self.index = HistoryItem._counter
-        self.timestamp = datetime.now().strftime("%H:%M:%S")
+        self.timestamp = datetime.now().strftime("%H:%M")
         self.expression = expression
         self.result = result
     
@@ -471,12 +471,42 @@ class CalculatorApp(ft.Container):
                         color=ft.Colors.WHITE,
                         expand=True,
                     ),
+                    ft.ElevatedButton(
+                        "⎘",
+                        width=36,
+                        height=30,
+                        style=ft.ButtonStyle(padding=ft.Padding(0, 1, 0, 0)),
+                        tooltip="Copiar resultado",
+                        on_click=lambda e, item_index=item.index: self.copy_history_result(item_index),
+                    ),
+                    ft.ElevatedButton(
+                        "✕",
+                        width=36,
+                        height=30,
+                        style=ft.ButtonStyle(padding=ft.Padding(0, 1, 0, 0)),
+                        tooltip="Apagar item",
+                        on_click=lambda e, item_index=item.index: self.delete_history_item(item_index),
+                    ),
                 ],
                 spacing=5,
             )
             self.history_list.controls.append(row)
         
         self.update()
+
+    def delete_history_item(self, item_index):
+        # Remove item do historico pelo indice auto-incrementado
+        self.history = [item for item in self.history if item.index != item_index]
+        self.refresh_history_display()
+
+    def copy_history_result(self, item_index):
+        # Copia resultado 
+        selected = next((item for item in self.history if item.index == item_index), None)
+        if selected is None:
+            return
+
+        if hasattr(self, "page") and self.page is not None:
+            self.page.set_clipboard(str(selected.result))
 
 
 def main(page: ft.Page):
