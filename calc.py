@@ -658,4 +658,12 @@ def main(page: ft.Page):
     page.add(calc)
 
 
-ft.run(main)
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "8080"))
+    ft.app(
+        target=main,
+        view=ft.WEB_BROWSER,
+        host="0.0.0.0",
+        port=port,
+        assets_dir="assets",
+    )
