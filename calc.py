@@ -33,10 +33,15 @@ class CalculatorApp(ft.Container):
         self.bgcolor = ft.Colors.BLACK
         self.border_radius = ft.BorderRadius.all(20)
         self.padding = 20
+        self.expression = ft.Text(value="", color=ft.Colors.WHITE_54, size=16)
         self.result = ft.Text(value="0", color=ft.Colors.WHITE, size=20)
 
         self.content = ft.Column(
             controls=[
+                ft.Row(
+                    controls=[self.expression],
+                    alignment=ft.MainAxisAlignment.END,
+                ),
                 ft.Row(
                     controls=[self.result],
                     alignment=ft.MainAxisAlignment.END,
@@ -91,17 +96,24 @@ class CalculatorApp(ft.Container):
 
         # Validacao e processamento das entradas
         if data == "AC":
+            self.expression.value = ""
             self.result.value = "0"
         elif data == "=":
-            self.result.value = self.evaluate_expression(self.result.value)
+            evaluated = self.evaluate_expression(self.result.value)
+            self.expression.value = self.result.value
+            self.result.value = evaluated
         elif data == "+/-":
             self.result.value = self.last_number(self.result.value)
+            self.expression.value = self.result.value
         elif data == "%":
             self.result.value = self.percent(self.result.value)
+            self.expression.value = self.result.value
         elif data in ("+", "-", "*", "/"):
             self.result.value = self.add_operator(self.result.value, data)
+            self.expression.value = self.result.value
         elif data in ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "."):
             self.result.value = self.add_digit(self.result.value, data)
+            self.expression.value = self.result.value
 
         self.update()
 
